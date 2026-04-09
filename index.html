@@ -24809,72 +24809,37 @@ lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer
 
               if (!aiResponseContent) throw new Error("API返回内容为空");
 
-              // 解析 JSON（兼容思维链、markdown代码块、前后夹杂文字）
+              // 解析 JSON
               let messagesArray = [];
               let innerVoiceData = null;
 
               try {
-                // 第一步：剥离 <think>...</think> 思维链
                 let sanitizedContent = aiResponseContent
-                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
+                  .replace(/^```json\s*/, "")
+                  .replace(/```$/, "")
                   .trim();
-
-                // 第二步：尝试直接解析
-                let fullResponse = null;
-                try {
-                  fullResponse = JSON.parse(sanitizedContent);
-                } catch (_) {}
-
-                // 第三步：去掉 markdown 代码块标记后再解析
-                if (!fullResponse) {
-                  const stripped = sanitizedContent
-                    .replace(/```json\s*/gi, "")
-                    .replace(/```/g, "")
-                    .trim();
-                  try {
-                    fullResponse = JSON.parse(stripped);
-                  } catch (_) {}
-
-                  // 第四步：扫描所有 {...} 候选块，从最长的开始尝试
-                  if (!fullResponse) {
-                    const candidates = [];
-                    let depth = 0, start = -1;
-                    for (let i = 0; i < stripped.length; i++) {
-                      if (stripped[i] === "{") { if (depth === 0) start = i; depth++; }
-                      else if (stripped[i] === "}") {
-                        depth--;
-                        if (depth === 0 && start !== -1) {
-                          candidates.push(stripped.slice(start, i + 1));
-                          start = -1;
-                        }
-                      }
-                    }
-                    candidates.sort((a, b) => b.length - a.length);
-                    for (const chunk of candidates) {
-                      try { fullResponse = JSON.parse(chunk); break; } catch (_) {}
-                    }
-                  }
+                const firstBrace = sanitizedContent.indexOf("{");
+                const lastBrace = sanitizedContent.lastIndexOf("}");
+                if (firstBrace !== -1 && lastBrace > firstBrace) {
+                  sanitizedContent = sanitizedContent.substring(
+                    firstBrace,
+                    lastBrace + 1,
+                  );
                 }
+                const fullResponse = JSON.parse(sanitizedContent);
 
-                if (fullResponse) {
-                  if (fullResponse.chatResponse && Array.isArray(fullResponse.chatResponse)) {
-                    messagesArray = fullResponse.chatResponse;
-                  }
-                  if (fullResponse.innerVoice) {
-                    innerVoiceData = fullResponse.innerVoice;
-                  }
-                } else {
-                  throw new Error("无法解析JSON");
+                if (
+                  fullResponse.chatResponse &&
+                  Array.isArray(fullResponse.chatResponse)
+                ) {
+                  messagesArray = fullResponse.chatResponse;
+                }
+                if (fullResponse.innerVoice) {
+                  innerVoiceData = fullResponse.innerVoice;
                 }
               } catch (e) {
                 console.warn("JSON解析失败，退回纯文本", e);
-                // 退回纯文本时，先去掉思维链再显示
-                const cleanFallback = aiResponseContent
-                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
-                  .replace(/```json\s*/gi, "")
-                  .replace(/```/g, "")
-                  .trim();
-                messagesArray = [{ type: "text", content: cleanFallback }];
+                messagesArray = [{ type: "text", content: aiResponseContent }];
               }
 
               // 保存心声
@@ -25136,17 +25101,11 @@ lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer
                 }
 
                 // 2.2 普通文本消息
-                const rawContent = msgData.content || "";
-                const cleanContent = rawContent
-                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
-                  .replace(/```json[\s\S]*?```/gi, "")
-                  .replace(/```[\s\S]*?```/g, "")
-                  .trim();
                 const aiMessage = {
                   role: "assistant",
                   senderName: chat.name,
                   timestamp: messageTimestamp++,
-                  content: cleanContent,
+                  content: msgData.content || "",
                 };
                 chat.history.push(aiMessage);
                 await incrementMessageCount(chatId);
@@ -35589,81 +35548,66 @@ ${libraryList}
               throw new Error((await response.json()).error.message);
 
             const data = await response.json();
-            const aiRaw = isGemini
+            const aiResponse = isGemini
               ? data.candidates[0].content.parts[0].text
               : data.choices[0].message.content;
-
-            // 剥离思维链
-            const aiResponse = aiRaw
-              .replace(/<think>[\s\S]*?<\/think>/gi, “”)
+            const sanitizedResponse = aiResponse
+              .replace(/!\[.*?\]\(.*?\)|https?:\/\/\S+/gi, "")
               .trim();
 
-            const connectingElement = callFeed.querySelector(“em”);
+            const connectingElement = callFeed.querySelector("em");
             if (connectingElement) connectingElement.remove();
 
-            if (videoCallState.isGroupCall) {
-              // 群聊：AI 返回 JSON 数组，解析后逐条渲染
-              let turns = [];
-              try {
-                // 尝试提取 JSON 数组
-                const stripped = aiResponse.replace(/```json\s*/gi, “”).replace(/```/g, “”).trim();
-                let parsed = null;
-                try { parsed = JSON.parse(stripped); } catch (_) {}
-                if (!parsed) {
-                  const m = stripped.match(/\[[\s\S]*\]/);
-                  if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} }
-                }
-                turns = Array.isArray(parsed) ? parsed : [];
-              } catch (_) {}
+            let bubble; // 先声明一个 bubble 变量
 
-              if (turns.length === 0) {
-                // 解析失败，直接显示纯文本
-                const bubble = document.createElement(“div”);
-                bubble.className = “call-message-bubble ai-speech”;
-                bubble.appendChild(document.createTextNode(aiResponse.replace(/```json[\s\S]*?```/gi, “”).replace(/```[\s\S]*?```/g, “”).trim()));
-                callFeed.appendChild(bubble);
-                videoCallState.callHistory.push({ role: “assistant”, content: aiResponse });
-              } else {
-                for (const turn of turns) {
-                  const speechText = (turn.speech || turn.content || “”).trim();
-                  if (!speechText) continue;
-                  const bubble = document.createElement(“div”);
-                  bubble.className = “call-message-bubble ai-speech”;
-                  bubble.innerHTML = `<strong>${turn.name}:</strong> `;
-                  bubble.appendChild(document.createTextNode(speechText));
-                  callFeed.appendChild(bubble);
-                  videoCallState.callHistory.push({
-                    role: “assistant”,
-                    content: `${turn.name}: ${speechText}`,
-                  });
-                }
-              }
+            // 根据通话模式创建对应的气泡元素
+            if (isVisualMode) {
+              bubble = document.createElement("div");
+              bubble.className = "visual-call-bubble ai";
             } else {
-              // 单聊：纯文本，去掉 URL / 代码块后显示
-              const sanitizedResponse = aiResponse
-                .replace(/!\[.*?\]\(.*?\)|https?:\/\/\S+/gi, “”)
-                .replace(/```json[\s\S]*?```/gi, “”)
-                .replace(/```[\s\S]*?```/g, “”)
-                .trim();
-
-              let bubble = document.createElement(“div”);
-              bubble.className = isVisualMode ? “visual-call-bubble ai” : “call-message-bubble ai-speech”;
-              bubble.appendChild(document.createTextNode(sanitizedResponse));
-              callFeed.appendChild(bubble);
-
-              if (
-                !chat.isGroup &&
-                chat.settings.videoCallVoiceAccess &&
-                state.apiConfig.minimaxGroupId &&
-                state.apiConfig.minimaxApiKey &&
-                chat.settings.minimaxVoiceId &&
-                sanitizedResponse
-              ) {
-                console.log(`[视频通话] 检测到语音接入已开启，为”${chat.name}”合成语音...`);
-                playMinimaxAudio(sanitizedResponse, chat.settings.minimaxVoiceId, [bubble]);
+              bubble = document.createElement("div");
+              bubble.className = "call-message-bubble ai-speech";
+              if (videoCallState.isGroupCall && turn.name) {
+                bubble.innerHTML = `<strong>${turn.name}:</strong> `;
               }
+            }
+            // 将AI的文本内容填充到气泡中
+            bubble.appendChild(document.createTextNode(sanitizedResponse));
 
-              videoCallState.callHistory.push({ role: “assistant”, content: sanitizedResponse });
+            // 挂载到通话界面
+            callFeed.appendChild(bubble);
+
+            // 检查：是否是单人通话、语音接入是否开启、Minimax是否配置、角色语音ID是否存在、并且AI确实返回了内容
+            if (
+              !chat.isGroup &&
+              chat.settings.videoCallVoiceAccess &&
+              state.apiConfig.minimaxGroupId &&
+              state.apiConfig.minimaxApiKey &&
+              chat.settings.minimaxVoiceId &&
+              sanitizedResponse
+            ) {
+              console.log(
+                `[视频通话] 检测到语音接入已开启，为“${chat.name}”合成语音...`,
+              );
+              // 调用你已有的 playMinimaxAudio 函数来播放语音
+              playMinimaxAudio(
+                sanitizedResponse,
+                chat.settings.minimaxVoiceId,
+                [bubble],
+              );
+            }
+
+            // 将这条消息记录到通话历史中，这部分逻辑不变
+            if (videoCallState.isGroupCall && turn.name) {
+              videoCallState.callHistory.push({
+                role: "assistant",
+                content: `${turn.name}: ${sanitizedResponse}`,
+              });
+            } else {
+              videoCallState.callHistory.push({
+                role: "assistant",
+                content: sanitizedResponse,
+              });
             }
 
             callFeed.scrollTop = callFeed.scrollHeight;

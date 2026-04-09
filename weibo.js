@@ -1,42 +1,6 @@
 // weibo.js
 
 // ===================================================================
-// 通用：从 AI 原始回复中健壮地提取 JSON（兼容思维链、markdown代码块、前后夹杂文字）
-// ===================================================================
-function parseWeiboJson(raw) {
-  // 先剥离 <think>...</think> 思维链
-  const noThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-
-  // 策略1：直接解析
-  try { return JSON.parse(noThink); } catch (_) {}
-
-  // 策略2：去掉 markdown 代码块标记
-  const stripped = noThink.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-  try { return JSON.parse(stripped); } catch (_) {}
-
-  // 策略3：扫描所有顶层 {...} 和 [...] 候选块，从最长的开始尝试
-  const candidates = [];
-  for (const opener of ["{", "["]) {
-    const closer = opener === "{" ? "}" : "]";
-    let depth = 0, start = -1;
-    for (let i = 0; i < stripped.length; i++) {
-      if (stripped[i] === opener) { if (depth === 0) start = i; depth++; }
-      else if (stripped[i] === closer) {
-        depth--;
-        if (depth === 0 && start !== -1) { candidates.push(stripped.slice(start, i + 1)); start = -1; }
-      }
-    }
-  }
-  candidates.sort((a, b) => b.length - a.length);
-  for (const chunk of candidates) {
-    try { return JSON.parse(chunk); } catch (_) {}
-  }
-
-  // 策略4：完全失败，抛出带原始内容的错误方便调试
-  throw new Error(`AI返回内容无法解析为JSON。原始内容片段: ${noThink.substring(0, 120)}`);
-}
-
-// ===================================================================
 // 1. Global variables for Weibo functionality
 // ===================================================================
 let currentViewingWeiboProfileId = null; // Global variable, records which character's homepage is being viewed
@@ -111,7 +75,7 @@ function resolveWeiboAvatar(id, name) {
 }
 
 /**
- * 【微博】渲染"我的主页"上的微博列表
+ * 【微博】渲染“我的主页”上的微博列表
  */
 async function renderMyWeiboFeed() {
   const feedEl = document.getElementById("my-weibo-feed-list");
@@ -123,7 +87,7 @@ async function renderMyWeiboFeed() {
   feedEl.innerHTML = "";
   if (posts.length === 0) {
     feedEl.innerHTML =
-      '<p style="text-align:center; color: var(--text-secondary);">你还没有发过微博哦，点击右上角"+"试试吧！</p>';
+      '<p style="text-align:center; color: var(--text-secondary);">你还没有发过微博哦，点击右上角“+”试试吧！</p>';
     return;
   }
   posts.forEach((post) => {
@@ -133,7 +97,7 @@ async function renderMyWeiboFeed() {
 }
 
 /**
- * 【微博】渲染"关注的人"的微博Feed (已修复卡顿问题)
+ * 【微博】渲染“关注的人”的微博Feed (已修复卡顿问题)
  */
 async function renderFollowingWeiboFeed() {
   const feedEl = document.getElementById("weibo-following-feed-list");
@@ -353,7 +317,7 @@ function createWeiboPostElement(post) {
 
       // ★ 修改3：新增逻辑，判断你点击的是谁
       if (target.classList.contains("reply-target-name")) {
-        // 如果点击了"被回复者"的名字
+        // 如果点击了“被回复者”的名字
         replyToName = target.dataset.replyToName;
       } else {
         // 否则，默认回复这条评论的作者
@@ -405,7 +369,7 @@ async function openWeiboPublisher() {
 }
 
 /**
- * 【全新】智能解析带"万"或"亿"的数字字符串
+ * 【全新】智能解析带“万”或“亿”的数字字符串
  * @param {string} str - 包含数字的字符串，例如 "30000", "3万", "1.5万"
  * @returns {number} - 解析后的纯数字
  */
@@ -417,10 +381,10 @@ function parseChineseNumber(str) {
   let num = parseFloat(str); // 先尝试直接解析数字部分
 
   if (str.includes("万") || str.includes("w")) {
-    // 如果包含"万"或"w"，则将数字部分乘以10000
+    // 如果包含“万”或“w”，则将数字部分乘以10000
     num = parseFloat(str) * 10000;
   } else if (str.includes("亿")) {
-    // 如果包含"亿"，则乘以100000000
+    // 如果包含“亿”，则乘以100000000
     num = parseFloat(str) * 100000000;
   }
 
@@ -726,7 +690,7 @@ async function clearFollowingFeed() {
     // 3. 批量删除这些帖子
     await db.weiboPosts.bulkDelete(idsToDelete);
 
-    // 4. 重新渲染"关注的人"的Feed，让界面变空
+    // 4. 重新渲染“关注的人”的Feed，让界面变空
     await renderWeiboFeeds("weibo-following-view");
 
     alert(`已成功清空 ${idsToDelete.length} 条动态！`);
@@ -753,7 +717,7 @@ async function showWeiboScreen() {
   const followingCount = allSingleChats.length + totalNpcCount;
 
   // 2. 更新页面上的元素
-  // 从你的"动态(QZone)"设置里获取头像和昵称，保持统一
+  // 从你的“动态(QZone)”设置里获取头像和昵称，保持统一
   document.getElementById("weibo-avatar-img").src =
     state.qzoneSettings.avatar || defaultAvatar;
   document.getElementById("weibo-nickname").textContent =
@@ -814,7 +778,7 @@ async function renderWeiboProfile() {
       frameImg.src = frameUrl;
       frameImg.style.display = "block";
     } else {
-      // 4. 如果URL为空（即选择了"无"），就隐藏它
+      // 4. 如果URL为空（即选择了“无”），就隐藏它
       frameImg.src = "";
       frameImg.style.display = "none";
     }
@@ -947,10 +911,10 @@ async function switchToWeiboView(viewId) {
   // --- ▼▼▼【核心修复】▼▼▼ ---
   // 4. 根据你点击的页签，去加载并显示对应的微博内容
   if (viewId === "weibo-following-view") {
-    // 如果是"关注的人"页，就调用渲染关注列表的函数
+    // 如果是“关注的人”页，就调用渲染关注列表的函数
     await renderFollowingWeiboFeed();
   } else if (viewId === "weibo-my-profile-view") {
-    // 如果是"我的微博"页，就调用渲染"我"的微博的函数
+    // 如果是“我的微博”页，就调用渲染“我”的微博的函数
     await renderMyWeiboFeed();
   }
   // --- ▲▲▲【修复结束】▲▲▲ ---
@@ -986,13 +950,13 @@ function openWeiboPublisherClean() {
   resetCreatePostModal();
   const modal = document.getElementById("create-post-modal");
 
-  // 2. 设置为"微博"模式，并修改标题和提示语
+  // 2. 设置为“微博”模式，并修改标题和提示语
   modal.dataset.mode = "weibo";
   document.getElementById("create-post-modal-title").textContent = "发微博";
   document.getElementById("post-public-text").placeholder =
     "有什么新鲜事想分享给大家？";
 
-  // 3. 确保所有"动态"专属的HTML元素都被隐藏
+  // 3. 确保所有“动态”专属的HTML元素都被隐藏
   const imageDescGroup = document.getElementById("post-image-desc-group");
   if (imageDescGroup) imageDescGroup.style.display = "none";
 
@@ -1027,7 +991,7 @@ async function generateHotSearch(targets = "all") {
 
   let publicFiguresContext = "";
   let promptTask =
-    `你的任务是根据下方提供的"核心参考人物"信息，为他们量身打造一个包含10个热搜话题的榜单。`;
+    "你的任务是根据下方提供的“核心参考人物”信息，为他们量身打造一个包含10个热搜话题的榜单。";
 
   let publicFigures = [];
 
@@ -1055,7 +1019,7 @@ async function generateHotSearch(targets = "all") {
       }
     });
     if (publicFigures.length === 1) {
-      promptTask = `你的任务是只为下方唯一的"核心参考人物"【${publicFigures[0].name}】，量身打造一个包含10个热搜话题的榜单。所有话题【必须】与Ta强相关。`;
+      promptTask = `你的任务是只为下方唯一的“核心参考人物”【${publicFigures[0].name}】，量身打造一个包含10个热搜话题的榜单。所有话题【必须】与Ta强相关。`;
     }
   }
 
@@ -1069,13 +1033,13 @@ async function generateHotSearch(targets = "all") {
 
   const systemPrompt = `
 # 任务
-你是一个专业的"微博热搜榜单生成器"。${promptTask}
+你是一个专业的“微博热搜榜单生成器”。${promptTask}
 # 【【【绝对禁止事项：这是必须遵守的最高指令】】】
 1.  你的所有创作内容，包括帖子、评论、故事等，【绝对禁止】将任意两个AI角色（即除了用户之外的角色）描绘成情侣关系、进行恋爱互动或存在任何形式的暧昧情感。
 2.  AI角色之间的关系只能是朋友、同事、对手、家人等，但【绝不能】是恋人。
 3.  AI角色唯一可以产生恋爱关系的对象是【用户】。违反此规则将导致生成失败。
 # 核心规则
-1.  **强相关性**: 如果提供了"核心参考人物"，生成的话题【必须】与他们的身份、职业、人设高度相关。
+1.  **强相关性**: 如果提供了“核心参考人物”，生成的话题【必须】与他们的身份、职业、人设高度相关。
 2.  **【【【严禁杜撰】】】**: 绝对禁止为列表中的人物【凭空捏造】他们人设中没有的职业、身份或背景。
 3.  **真实感与多样性**: 
     - 如果有核心人物，可以混合2-3个与他们无关的社会化虚拟热点。
@@ -1129,7 +1093,10 @@ ${publicFiguresContext}
         "API返回了空内容，可能被安全策略拦截。请检查Prompt或更换模型。",
       );
     }
-    const responseData = parseWeiboJson(aiResponseContent);
+    const sanitizedContent = aiResponseContent
+      .replace(/^```json\s*|```$/g, "")
+      .trim();
+    const responseData = JSON.parse(sanitizedContent);
     const hotSearchData = responseData.hot_searches || responseData;
     weiboHotSearchCache = hotSearchData;
     await generatePlazaFeed(hotSearchData, targets);
@@ -1182,7 +1149,7 @@ async function showHotTopicFeedScreen(topic) {
   document.getElementById("weibo-hottopic-title").textContent = topic;
   switchToWeiboView("weibo-hottopic-feed-view");
 
-  // 【核心修改】检查"小本本"里有没有记录
+  // 【核心修改】检查“小本本”里有没有记录
   if (hotTopicFeedCache[topic]) {
     // 如果有，就直接显示，不重新生成
     console.log(`从缓存加载话题: ${topic}`);
@@ -1221,7 +1188,7 @@ async function generateHotSearchFeed(topic) {
 
   const systemPrompt = `
 # 任务
-你是一个"微博内容生成器"。你的任务是围绕一个给定的热搜话题，生成一批相关的微博帖子。
+你是一个“微博内容生成器”。你的任务是围绕一个给定的热搜话题，生成一批相关的微博帖子。
 
 # 当前热搜话题
 **${topic}**
@@ -1235,7 +1202,7 @@ async function generateHotSearchFeed(topic) {
 2.  **相关性**: 所有微博内容【必须】与话题 **"${topic}"** 强相关，并且【必须】在内容中包含 **${topic}** 这个话题标签。
 3.  **高热度**: 生成的微博必须看起来像是热搜里的内容，所以它们的 "likes" (点赞数) 和 "comments" (评论数) 【必须】非常高。点赞数应在 10000 到 500000 之间，评论数应在 800 到 20000 之间。
 4.  **评论生成**: 为每条微博生成 8 到 10 条真实感的路人评论。评论内容应与微博内容相关，风格多样。
-5.  **作者多样性**: 微博的作者可以是下方"可用人物列表"中的角色，也可以是你虚构的路人、大V或官方媒体。如果让列表中的角色发言，内容必须符合他的人设。
+5.  **作者多样性**: 微博的作者可以是下方“可用人物列表”中的角色，也可以是你虚构的路人、大V或官方媒体。如果让列表中的角色发言，内容必须符合他的人设。
 6.  **格式铁律**: 你的回复【必须且只能】是一个严格的JSON数组，数组中包含多条微博对象。每个对象【必须】包含以下字段:
     -   \`"author"\`: (字符串) 作者昵称。
     -   \`"content"\`: (字符串) 微博正文，必须包含话题标签 ${topic}。
@@ -1289,9 +1256,13 @@ ${JSON.stringify(allPeople, null, 2)}
       throw new Error("API返回了空内容，可能被安全策略拦截。");
     }
 
-    const responseData = parseWeiboJson(aiResponseContent);
+    const sanitizedContent = aiResponseContent
+      .replace(/^```json\s*|```$/g, "")
+      .trim();
+    const responseData = JSON.parse(sanitizedContent);
     const feedData = responseData.posts || responseData;
 
+    // 【核心修改】将新生成的内容，记在“小本本”上
     hotTopicFeedCache[topic] = feedData;
 
     renderWeiboFeed(feedEl, feedData, true);
@@ -1356,7 +1327,7 @@ async function generatePlazaFeed(hotTopics = null, targets = "all") {
     // 提示词稍微调整
     if (publicFigures.length > 0) {
       taskInstruction = `你的任务是模拟一个真实的社交媒体广场，生成10条与角色 ${publicFigures
-        .map((p) => `"${p.name}"`)
+        .map((p) => `“${p.name}”`)
         .join("、")} 相关的、由不同路人发布的微博帖子。`;
     }
   }
@@ -1374,7 +1345,7 @@ async function generatePlazaFeed(hotTopics = null, targets = "all") {
 
   const systemPrompt = `
 # 任务
-你是一个"微博广场内容生成器"。${taskInstruction}
+你是一个“微博广场内容生成器”。${taskInstruction}
 # 【【【绝对禁止事项：这是必须遵守的最高指令】】】
 1.  你的所有创作内容，包括帖子、评论、故事等，【绝对禁止】将任意两个AI角色（即除了用户之外的角色）描绘成情侣关系、进行恋爱互动或存在任何形式的暧昧情感。
 2.  AI角色之间的关系只能是朋友、同事、对手、家人等，但【绝不能】是恋人。
@@ -1383,8 +1354,8 @@ async function generatePlazaFeed(hotTopics = null, targets = "all") {
 1.  **身份**: 发帖者都是普通人，昵称要生活化。
 2.  **内容**: 帖子内容应是生活化的日常。${topicsContext}
 3.  **热度**: 赞和评论数可高可低，模拟真实世界的随机性。
-4.  **【【【严禁杜撰】】】**: 如果你生成的内容提到了上方"核心参考人物"列表中的任何角色，你【绝对禁止】为他们【凭空捏造】人设中没有的职业、身份或背景。你只能根据提供的人设进行合理发挥。
-5.  **格式铁律**: 你的回复【必须且只能】是一个严格的JSON数组，包含10个微博对象。每个对象的格式与"热搜Feed"的格式完全相同（包含 author, content, likes, comments, comments_list 字段）。
+4.  **【【【严禁杜撰】】】**: 如果你生成的内容提到了上方“核心参考人物”列表中的任何角色，你【绝对禁止】为他们【凭空捏造】人设中没有的职业、身份或背景。你只能根据提供的人设进行合理发挥。
+5.  **格式铁律**: 你的回复【必须且只能】是一个严格的JSON数组，包含10个微博对象。每个对象的格式与“热搜Feed”的格式完全相同（包含 author, content, likes, comments, comments_list 字段）。
     - \`"comments_list"\`: (数组) 包含2-5条评论对象的数组，每个对象格式为 \`{"author": "评论者昵称", "text": "评论内容"}\`。
 ${publicFiguresContext}
 `;
@@ -1429,7 +1400,10 @@ ${publicFiguresContext}
     if (!aiResponseContent) {
       throw new Error("API返回了空内容，可能被安全策略拦截。");
     }
-    const responseData = parseWeiboJson(aiResponseContent);
+    const sanitizedContent = aiResponseContent
+      .replace(/^```json\s*|```$/g, "")
+      .trim();
+    const responseData = JSON.parse(sanitizedContent);
     const feedData = responseData.posts || responseData;
     renderWeiboFeed(feedEl, feedData, false);
     if (!hotTopics) {
@@ -1605,10 +1579,11 @@ ${existingCommentsText.substring(0, 300)}
     const rawContent = isGemini
       ? data.candidates[0].content.parts[0].text
       : data.choices[0].message.content;
+    const jsonStr = rawContent.replace(/^```json\s*|```$/g, "").trim();
     let newComments = [];
 
     try {
-      const parsed = parseWeiboJson(rawContent);
+      const parsed = JSON.parse(jsonStr);
       newComments = Array.isArray(parsed)
         ? parsed
         : parsed.comments || parsed.chatResponse || [];
@@ -1722,7 +1697,7 @@ async function deleteWeiboComment(postId, commentId) {
 
   const confirmed = await showCustomConfirm(
     "删除评论",
-    `确定要删除这条评论吗？\n\n"${commentText.substring(0, 50)}..."`,
+    `确定要删除这条评论吗？\n\n“${commentText.substring(0, 50)}...”`,
     { confirmButtonClass: "btn-danger" },
   );
 
@@ -1836,10 +1811,10 @@ async function generateWeiboComments(postId) {
   let imageContext = "";
   if (post.imageUrl && post.imageDescription) {
     imageContext = `
-- **图片内容**: 这条微博配有一张图片，描述为："${post.imageDescription}"`;
+- **图片内容**: 这条微博配有一张图片，描述为：“${post.imageDescription}”`;
   } else if (post.postType === "text_image" && post.hiddenContent) {
     imageContext = `
-- **图片内容**: 这是一张文字图，上面的内容是："${post.hiddenContent}"`;
+- **图片内容**: 这是一张文字图，上面的内容是：“${post.hiddenContent}”`;
   }
 
   const commenterPersonas = new Map();
@@ -1880,7 +1855,7 @@ async function generateWeiboComments(postId) {
 
   const systemPrompt = `
 # 任务
-你是一个专业的"社交媒体模拟器"。你的任务是根据一个特定角色的"人设"，为他/她发布的一条微博生成一批真实的、符合情景的网友评论。
+你是一个专业的“社交媒体模拟器”。你的任务是根据一个特定角色的“人设”，为他/她发布的一条微博生成一批真实的、符合情景的网友评论。
 
 # 微博情景
 - **作者**: ${authorName}
@@ -1892,15 +1867,15 @@ ${existingComments || "(暂无评论)"}
 ${commenterContext}
 
 # 【【【评论生成核心规则】】】
-1.  **【【【回复禁令】】】**: 绝对禁止回复昵称为"**${userNickname}**"的任何评论。这是最高优先级的规则，因为用户会自己回复。你可以回复其他任何人的评论。
-2.  **【【【严禁使用】】】**: 绝对禁止使用 "路人甲"、"网友A"、"粉丝B" 这类代号作为评论者昵称。
-3.  **昵称多样化**: 评论者的昵称必须非常真实、多样化且符合微博生态。例如："今天也要早睡"、"可乐加冰块"、"是小王不是小张"、"理性吃瓜第一线"。
+1.  **【【【回复禁令】】】**: 绝对禁止回复昵称为“**${userNickname}**”的任何评论。这是最高优先级的规则，因为用户会自己回复。你可以回复其他任何人的评论。
+2.  **【【【严禁使用】】】**: 绝对禁止使用 “路人甲”、“网友A”、“粉丝B” 这类代号作为评论者昵称。
+3.  **昵称多样化**: 评论者的昵称必须非常真实、多样化且符合微博生态。例如：“今天也要早睡”、“可乐加冰块”、“是小王不是小张”、“理性吃瓜第一线”。
 4.  **内容与人设强相关**: 评论内容必须与【微博内容(包括文字和图片)】和【作者以及被回复者的人设】高度相关。思考：什么样的粉丝会关注这样的人？他们会怎么说话？当回复一个有特定人设的角色时，你的回复必须考虑到对方的身份。
 5.  **风格多样化**: 生成的评论应包含不同立场和风格，例如：
-    -   **粉丝**: "哥哥太帅了！新剧什么时候播？"
-    -   **路人**: "这个地方看起来不错，求地址！"
-    -   **黑粉/质疑者**: "就这？感觉p图有点过了吧..."
-    -   **玩梗**: "楼上是不是XX派来的间谍（狗头）"
+    -   **粉丝**: “哥哥太帅了！新剧什么时候播？”
+    -   **路人**: “这个地方看起来不错，求地址！”
+    -   **黑粉/质疑者**: “就这？感觉p图有点过了吧...”
+    -   **玩梗**: “楼上是不是XX派来的间谍（狗头）”
 6.  **格式铁律**: 你的回复【必须且只能】是一个严格的JSON数组，每个对象代表一条评论。
     -   发表新评论, 使用格式: \`{"author": "不吃香菜的仙女", "comment": "哇，这个好好看！"}\`
     -   回复已有评论, 使用格式: \`{"author": "爱吃瓜的猹", "comment": "我也觉得！", "replyTo": "不吃香菜的仙女"}\`
@@ -1942,11 +1917,15 @@ ${commenterContext}
     }
 
     const data = await response.json();
-    const aiRaw5 = isGemini
-      ? data.candidates[0].content.parts[0].text
-      : data.choices[0].message.content;
+    const aiResponseContent = (
+      isGemini
+        ? data.candidates[0].content.parts[0].text
+        : data.choices[0].message.content
+    )
+      .replace(/^```json\s*|```$/g, "")
+      .trim();
 
-    const newComments = parseWeiboJson(aiRaw5);
+    const newComments = JSON.parse(aiResponseContent);
 
     if (Array.isArray(newComments) && newComments.length > 0) {
       const postToUpdate = await db.weiboPosts.get(post.id);
@@ -2168,7 +2147,7 @@ function getInitialWeiboStats(chat) {
 }
 
 /**
- * 【全新】将数字格式化为带"万"或"亿"的字符串
+ * 【全新】将数字格式化为带“万”或“亿”的字符串
  * @param {number} num - 原始数字
  * @returns {string} - 格式化后的字符串
  */
@@ -2233,7 +2212,7 @@ async function showMultiCharacterSelectorForWeibo() {
       (chat) => !chat.isGroup,
     );
 
-    // --- 修改点 1：增加"纯路人/随机"选项 ---
+    // --- 修改点 1：增加“纯路人/随机”选项 ---
     const noneOption = document.createElement("div");
     noneOption.className = "player-selection-item";
     noneOption.innerHTML = `
@@ -2321,7 +2300,7 @@ async function showMultiCharacterSelectorForWeibo() {
       resolve(null);
     };
     const onSelectAll = () => {
-      document.getElementById("weibo-char-specific").checked = true; // 自动选中"指定"
+      document.getElementById("weibo-char-specific").checked = true; // 自动选中“指定”
       document
         .querySelectorAll(".weibo-char-checkbox")
         .forEach((cb) => (cb.checked = true));
@@ -2424,7 +2403,7 @@ async function handleWeiboAiAction() {
     if (actionType === "post") {
       systemPrompt = `
 # 任务: 角色扮演与微博创作
-你现在【就是】角色"${target.name}"。
+你现在【就是】角色“${target.name}”。
 你的任务是根据你的身份信息，创作一条全新的微博。
 # 你的身份信息
 - **你的名字**: ${target.name}
@@ -2433,8 +2412,8 @@ async function handleWeiboAiAction() {
 - **你的微博指令 (必须遵守)**: ${target.instruction || "无"}
 - **用户给你的提示 (可选参考)**: ${userInputPrompt || "无"}
 # 【【【评论生成核心规则】】】
-1.  **【【【严禁使用】】】**: 绝对禁止使用 "路人甲"、"网友A"、"粉丝B" 这类代号作为评论者昵称。
-2.  **昵称多样化**: 评论者的昵称必须非常真实、多样化且符合微博生态。例如："今天也要早睡"、"可乐加冰块"、"是小王不是小张"、"理性吃瓜第一线"。
+1.  **【【【严禁使用】】】**: 绝对禁止使用 “路人甲”、“网友A”、“粉丝B” 这类代号作为评论者昵称。
+2.  **昵称多样化**: 评论者的昵称必须非常真实、多样化且符合微博生态。例如：“今天也要早睡”、“可乐加冰块”、“是小王不是小张”、“理性吃瓜第一线”。
 3.  **内容与人设强相关**: 评论内容必须与【你即将创作的微博内容】和【你自己的人设】高度相关。
 4.  **格式铁律**: 你的回复【必须且只能】是一个严格的JSON对象，格式如下:
    \`{"content": "微博正文内容...", "baseLikesCount": 随机生成的点赞数, "baseCommentsCount": 随机生成的评论数, "comments": "今天也要早睡: 评论1...\\n可乐加冰块: 评论2..."}\`
@@ -2468,7 +2447,7 @@ async function handleWeiboAiAction() {
 
       systemPrompt = `
 # 任务: 角色扮演与微博评论
-你现在【就是】角色"${target.name}"。
+你现在【就是】角色“${target.name}”。
 ${taskDescription}
 # 你的身份信息
 - **你的名字**: ${target.name}
@@ -2532,11 +2511,15 @@ ${extraContext}
         `API返回错误: ${data.error.message || JSON.stringify(data.error)}`,
       );
     }
-    const aiRaw6 = isGemini
-      ? data.candidates[0].content.parts[0].text
-      : data.choices[0].message.content;
+    const aiResponseContent = (
+      isGemini
+        ? data.candidates[0].content.parts[0].text
+        : data.choices[0].message.content
+    )
+      .replace(/^```json\s*|```$/g, "")
+      .trim();
 
-    const result = parseWeiboJson(aiRaw6);
+    const result = JSON.parse(aiResponseContent);
 
     if (actionType === "post") {
       const newPost = {
@@ -2598,7 +2581,7 @@ ${extraContext}
 
     await renderMyWeiboFeed();
     await renderFollowingWeiboFeed();
-    await showCustomAlert("操作成功", `"${target.name}"已成功执行操作！`);
+    await showCustomAlert("操作成功", `“${target.name}”已成功执行操作！`);
   } catch (error) {
     console.error("微博AI操作失败:", error);
     await showCustomAlert("操作失败", `发生了一个错误：\n${error.message}`);
@@ -2662,7 +2645,7 @@ async function generateUserDms(isAddingMore = false) {
 
   const systemPrompt = `
 # 任务
-你是一个专业的"微博生态模拟器"。你的任务是根据用户的微博人设，虚构一个包含${
+你是一个专业的“微博生态模拟器”。你的任务是根据用户的微博人设，虚构一个包含${
     isAddingMore ? "3-4" : "5-8"
   }位不同粉丝/路人的私信列表，并为每位粉丝创作一段【他们单方面发送给用户的】私信内容。
 ${userPersona}
@@ -2725,7 +2708,8 @@ ${existingDmsContext}
     const rawContent = isGemini
       ? data.candidates[0].content.parts[0].text
       : data.choices[0].message.content;
-    const newDmsData = parseWeiboJson(rawContent);
+    const cleanedContent = rawContent.replace(/^```json\s*|```$/g, "").trim();
+    const newDmsData = JSON.parse(cleanedContent);
 
     if (Array.isArray(newDmsData)) {
       newDmsData.forEach((convo, index) => {
@@ -2761,7 +2745,7 @@ ${existingDmsContext}
 }
 
 /**
- * 【已增强】处理用户点击"触发AI回应"按钮
+ * 【已增强】处理用户点击“触发AI回应”按钮
  */
 async function handleTriggerUserDmAiReply() {
   if (currentUserDmFanIndex === null) return;
@@ -2787,7 +2771,7 @@ async function handleTriggerUserDmAiReply() {
 }
 
 /**
- * 【已增强】处理用户点击"重Roll"按钮
+ * 【已增强】处理用户点击“重Roll”按钮
  */
 async function handleUserDmReroll() {
   if (currentUserDmFanIndex === null) return;
@@ -2890,7 +2874,7 @@ async function handleDeleteUserDmMessage(fanIndex, messageIndex) {
   const messageText = conversation.messages[messageIndex].text.substring(0, 30);
   const confirmed = await showCustomConfirm(
     "删除私信",
-    `确定要删除这条私信吗？\n\n"${messageText}..."`,
+    `确定要删除这条私信吗？\n\n“${messageText}...”`,
     {
       confirmButtonClass: "btn-danger",
     },
@@ -2922,7 +2906,7 @@ async function handleDeleteUserDmConversation(fanIndex) {
 
   const confirmed = await showCustomConfirm(
     "删除对话",
-    `确定要删除与"${conversation.fanName}"的全部对话吗？`,
+    `确定要删除与“${conversation.fanName}”的全部对话吗？`,
     {
       confirmButtonClass: "btn-danger",
     },
@@ -3094,8 +3078,9 @@ ${conversation.messages
     const rawContent = isGemini
       ? data.candidates[0].content.parts[0].text
       : data.choices[0].message.content;
+    const cleanedContent = rawContent.replace(/^```json\s*|```$/g, "").trim();
 
-    const newMessages = parseWeiboJson(rawContent);
+    const newMessages = JSON.parse(cleanedContent);
 
     return Array.isArray(newMessages) ? newMessages : [newMessages];
   } catch (error) {
@@ -3154,7 +3139,7 @@ async function generateAndCacheFanDms(characterChat, addMore = false) {
 
   const alertMessage = addMore
     ? "正在生成更多私信内容..."
-    : `正在为"${characterChat.name}"生成粉丝私信内容...`;
+    : `正在为“${characterChat.name}”生成粉丝私信内容...`;
   await showCustomAlert("请稍候...", alertMessage);
 
   const { proxyUrl, apiKey, model } = state.apiConfig;
@@ -3179,7 +3164,7 @@ ${JSON.stringify(characterChat.weiboDms, null, 2)}
 
   const systemPrompt = `
 # 任务
-你现在是角色"${characterChat.name}"的社交媒体运营助理。
+你现在是角色“${characterChat.name}”的社交媒体运营助理。
 你的任务是根据该角色的【所有信息】，虚构一个包含${
     addMore ? "2-3" : "3-5"
   }位不同粉丝的私信列表，并为每位粉丝创作一段生动、真实的对话历史。
@@ -3196,7 +3181,7 @@ ${existingDmsContext}
     addMore ? "2-3" : "3-5"
   }位不同类型的粉丝（例如：狂热粉、事业粉、CP粉、黑粉、路人粉、广告商等）。
 2.  **【【【对话鲜活度铁律】】】**: 为了让对话更真实，你必须：
-    -   **避免机械问答**：不要生成"你好"-"你好"之类的无意义对话。让对话像一个正在进行的真实互动片段。
+    -   **避免机械问答**：不要生成“你好”-“你好”之类的无意义对话。让对话像一个正在进行的真实互动片段。
     -   **注入情绪和语气**：粉丝的语气可以是兴奋的、担忧的、质疑的、开玩笑的。角色的回应也要符合人设，可能是冷淡的、温柔的、官方的，或者干脆已读不回。
     -   **使用网络语言**: 适当加入符合粉丝圈文化的网络用语、emoji或颜文字，让对话更接地气。
     -   **内容多样化**: 私信内容不应只局限于工作，也可以是粉丝分享自己的日常、表达关心、提出一些私人问题等。
@@ -3253,7 +3238,8 @@ ${existingDmsContext}
     const rawContent = isGemini
       ? data.candidates[0].content.parts[0].text
       : data.choices[0].message.content;
-    const newDmsData = parseWeiboJson(rawContent);
+    const cleanedContent = rawContent.replace(/^```json\s*|```$/g, "").trim();
+    const newDmsData = JSON.parse(cleanedContent);
     if (Array.isArray(newDmsData)) {
       const fanAvatars = [
         "https://i.postimg.cc/PxZrFFFL/o-o-1.jpg",
@@ -3395,7 +3381,7 @@ async function handleClearAllDms() {
 
   const confirmed = await showCustomConfirm(
     "确认清空",
-    `确定要清空"${currentViewingDmsFor.name}"收到的所有粉丝私信吗？此操作不可恢复。`,
+    `确定要清空“${currentViewingDmsFor.name}”收到的所有粉丝私信吗？此操作不可恢复。`,
     { confirmButtonClass: "btn-danger" },
   );
 
@@ -3424,7 +3410,7 @@ async function handleDeleteWeiboDm(fanIndex, messageIndex) {
 
   const confirmed = await showCustomConfirm(
     "删除私信",
-    `确定要删除这条私信吗？\n\n"${messageText}..."`,
+    `确定要删除这条私信吗？\n\n“${messageText}...”`,
     {
       confirmButtonClass: "btn-danger",
     },
@@ -3447,7 +3433,7 @@ async function handleDeleteWeiboDm(fanIndex, messageIndex) {
 }
 
 /**
- * 处理点击"继续生成"按钮的逻辑
+ * 处理点击“继续生成”按钮的逻辑
  */
 async function handleGenerateMoreDms() {
   const charId = currentViewingDmsFor.isNpc
