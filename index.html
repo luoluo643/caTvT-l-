@@ -24809,37 +24809,64 @@ lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer
 
               if (!aiResponseContent) throw new Error("API返回内容为空");
 
-              // 解析 JSON
+              // 解析 JSON（兼容思维链、markdown代码块、前后夹杂文字）
               let messagesArray = [];
               let innerVoiceData = null;
 
               try {
+                // 第一步：剥离 <think>...</think> 思维链
                 let sanitizedContent = aiResponseContent
-                  .replace(/^```json\s*/, "")
-                  .replace(/```$/, "")
+                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
                   .trim();
-                const firstBrace = sanitizedContent.indexOf("{");
-                const lastBrace = sanitizedContent.lastIndexOf("}");
-                if (firstBrace !== -1 && lastBrace > firstBrace) {
-                  sanitizedContent = sanitizedContent.substring(
-                    firstBrace,
-                    lastBrace + 1,
-                  );
-                }
-                const fullResponse = JSON.parse(sanitizedContent);
 
-                if (
-                  fullResponse.chatResponse &&
-                  Array.isArray(fullResponse.chatResponse)
-                ) {
-                  messagesArray = fullResponse.chatResponse;
+                let fullResponse = null;
+                // 第二步：直接解析
+                try { fullResponse = JSON.parse(sanitizedContent); } catch (_) {}
+
+                // 第三步：去掉 markdown 代码块标记后解析
+                if (!fullResponse) {
+                  const stripped = sanitizedContent
+                    .replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+                  try { fullResponse = JSON.parse(stripped); } catch (_) {}
+
+                  // 第四步：扫描所有 {...} 候选块，从最长的开始尝试
+                  if (!fullResponse) {
+                    const candidates = [];
+                    let depth = 0, start = -1;
+                    for (let i = 0; i < stripped.length; i++) {
+                      if (stripped[i] === "{") { if (depth === 0) start = i; depth++; }
+                      else if (stripped[i] === "}") {
+                        depth--;
+                        if (depth === 0 && start !== -1) {
+                          candidates.push(stripped.slice(start, i + 1));
+                          start = -1;
+                        }
+                      }
+                    }
+                    candidates.sort((a, b) => b.length - a.length);
+                    for (const chunk of candidates) {
+                      try { fullResponse = JSON.parse(chunk); break; } catch (_) {}
+                    }
+                  }
                 }
-                if (fullResponse.innerVoice) {
-                  innerVoiceData = fullResponse.innerVoice;
+
+                if (fullResponse) {
+                  if (fullResponse.chatResponse && Array.isArray(fullResponse.chatResponse)) {
+                    messagesArray = fullResponse.chatResponse;
+                  }
+                  if (fullResponse.innerVoice) {
+                    innerVoiceData = fullResponse.innerVoice;
+                  }
+                } else {
+                  throw new Error("无法解析JSON");
                 }
               } catch (e) {
                 console.warn("JSON解析失败，退回纯文本", e);
-                messagesArray = [{ type: "text", content: aiResponseContent }];
+                const cleanFallback = aiResponseContent
+                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
+                  .replace(/```json\s*/gi, "").replace(/```/g, "")
+                  .trim();
+                messagesArray = [{ type: "text", content: cleanFallback }];
               }
 
               // 保存心声
@@ -25101,11 +25128,16 @@ lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer
                 }
 
                 // 2.2 普通文本消息
+                const cleanContent = (msgData.content || "")
+                  .replace(/<think>[\s\S]*?<\/think>/gi, "")
+                  .replace(/```json[\s\S]*?```/gi, "")
+                  .replace(/```[\s\S]*?```/g, "")
+                  .trim();
                 const aiMessage = {
                   role: "assistant",
                   senderName: chat.name,
                   timestamp: messageTimestamp++,
-                  content: msgData.content || "",
+                  content: cleanContent,
                 };
                 chat.history.push(aiMessage);
                 await incrementMessageCount(chatId);
