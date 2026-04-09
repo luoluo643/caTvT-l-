@@ -5,6 +5,48 @@ let currentDatingScenes = []; // 存储所有已生成的约会场景
 let isGeneratingScenes = false; // 标记是否正在生成场景
 let currentDatingUISettings = null; // 存储约会界面设置
 const bgmPlayer = document.getElementById("dating-bgm-player");
+
+/**
+ * 从 AI 原始回复中健壮地提取 JSON 对象。
+ * 策略：逐步降级，尽量不抛错。
+ *   1. 直接 JSON.parse
+ *   2. 去掉 markdown 代码块后再 parse
+ *   3. 用正则找最长 {...} 块逐个尝试 parse（从最外层往内缩）
+ *   4. 以上都失败时，把原始文字当作 story 兜底，返回最小合法对象
+ */
+function parseDatingJson(raw) {
+  // 策略1：直接解析
+  try { return JSON.parse(raw); } catch (_) {}
+
+  // 策略2：去掉 markdown 代码块标记
+  const stripped = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  try { return JSON.parse(stripped); } catch (_) {}
+
+  // 策略3：找所有 {...} 候选块，从最长的开始尝试
+  const candidates = [];
+  let depth = 0, start = -1;
+  for (let i = 0; i < stripped.length; i++) {
+    if (stripped[i] === "{") { if (depth === 0) start = i; depth++; }
+    else if (stripped[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) { candidates.push(stripped.slice(start, i + 1)); start = -1; }
+    }
+  }
+  // 按长度降序，优先尝试最完整的
+  candidates.sort((a, b) => b.length - a.length);
+  for (const chunk of candidates) {
+    try { return JSON.parse(chunk); } catch (_) {}
+  }
+
+  // 策略4：完全兜底，把原文当 story 用，让游戏继续
+  console.warn("[parseDatingJson] 所有解析策略失败，使用兜底对象。原始内容:", raw.substring(0, 200));
+  return {
+    story: stripped || raw,
+    choices: ["继续", "换个话题"],
+    valuesUpdate: { romance: 2, lust: 0, completion_increase: 3 },
+    isDateOver: false,
+  };
+}
 /**
  * 打开"约会大作战"App，快速显示已保存数据
  */
@@ -1199,74 +1241,64 @@ ${recentChatHistory}
       isGemini
         ? data.candidates[0].content.parts[0].text
         : data.choices[0].message.content
-    )
-      .replace(/^```json\s*|```$/gm, "")
-      .trim();
-    // 提取第一个完整的 JSON 对象，兼容 AI 在 JSON 前后附加说明文字的情况
-    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) rawContent = jsonMatch[0];
-    let gameData;
-    try {
-      gameData = JSON.parse(rawContent);
-    } catch (parseErr) {
-      throw new Error(`JSON解析失败 (${parseErr.message})，原始内容: ${rawContent.substring(0, 100)}`);
-    }
+    ).trim();
+
+    const gameData = parseDatingJson(rawContent);
 
     // 处理AI返回的游戏数据
-    if (gameData.story && Array.isArray(gameData.choices)) {
-      // 更新数值
-      if (gameData.valuesUpdate) {
-        const romanceChange = gameData.valuesUpdate.romance || 0;
-        const lustChange = gameData.valuesUpdate.lust || 0;
-        const completionIncrease =
-          gameData.valuesUpdate.completion_increase || 0;
+    // 更新数值
+    if (gameData.valuesUpdate) {
+      const romanceChange = gameData.valuesUpdate.romance || 0;
+      const lustChange = gameData.valuesUpdate.lust || 0;
+      const completionIncrease =
+        gameData.valuesUpdate.completion_increase || 0;
 
-        datingGameState.romance = Math.max(
-          0,
-          Math.min(100, datingGameState.romance + romanceChange),
-        );
-        datingGameState.lust = Math.max(
-          0,
-          Math.min(100, datingGameState.lust + lustChange),
-        );
-        datingGameState.completion = Math.max(
-          0,
-          Math.min(100, datingGameState.completion + completionIncrease),
-        );
-
-        console.log(
-          `数值更新 -> 浪漫: ${datingGameState.romance}/100, 性欲: ${datingGameState.lust}/100, 完成度: ${datingGameState.completion}% (本次变化: ${completionIncrease})`,
-        );
-
-        renderDatingValues();
-        renderDatingCompletion();
-      }
-
-      const isDateOver = gameData.isDateOver || false;
-      // 检查约会是否结束且完成度达到100%
-      if (isDateOver && datingGameState.completion >= 100) {
-        // 显示结算卡片
-        showDatingSummaryCard(gameData.story);
-        return;
-      }
-
-      // 更新立绘
-      const spriteContainer = document.getElementById(
-        "dating-game-sprite-container",
+      datingGameState.romance = Math.max(
+        0,
+        Math.min(100, datingGameState.romance + romanceChange),
       );
-      const spriteImg = document.getElementById("dating-game-sprite");
-      if (gameData.sprite && spriteGroupId) {
-        const chosenSprite = await db.datingSprites
-          .where({ groupId: spriteGroupId, description: gameData.sprite })
-          .first();
-        if (chosenSprite) {
-          spriteContainer.style.display = "block";
-          spriteContainer.style.left = `${chosenSprite.x}%`;
-          spriteContainer.style.bottom = `${100 - chosenSprite.y}%`;
-          spriteContainer.style.width = `${chosenSprite.size}%`;
-          spriteContainer.style.transform = `translateX(-50%) translateY(${100 - chosenSprite.y}%)`;
-          spriteImg.style.opacity = 0;
-          setTimeout(() => {
+      datingGameState.lust = Math.max(
+        0,
+        Math.min(100, datingGameState.lust + lustChange),
+      );
+      datingGameState.completion = Math.max(
+        0,
+        Math.min(100, datingGameState.completion + completionIncrease),
+      );
+
+      console.log(
+        `数值更新 -> 浪漫: ${datingGameState.romance}/100, 性欲: ${datingGameState.lust}/100, 完成度: ${datingGameState.completion}% (本次变化: ${completionIncrease})`,
+      );
+
+      renderDatingValues();
+      renderDatingCompletion();
+    }
+
+    const isDateOver = gameData.isDateOver || false;
+    // 检查约会是否结束且完成度达到100%
+    if (isDateOver && datingGameState.completion >= 100) {
+      // 显示结算卡片
+      showDatingSummaryCard(gameData.story);
+      return;
+    }
+
+    // 更新立绘
+    const spriteContainer = document.getElementById(
+      "dating-game-sprite-container",
+    );
+    const spriteImg = document.getElementById("dating-game-sprite");
+    if (gameData.sprite && spriteGroupId) {
+      const chosenSprite = await db.datingSprites
+        .where({ groupId: spriteGroupId, description: gameData.sprite })
+        .first();
+      if (chosenSprite) {
+        spriteContainer.style.display = "block";
+        spriteContainer.style.left = `${chosenSprite.x}%`;
+        spriteContainer.style.bottom = `${100 - chosenSprite.y}%`;
+        spriteContainer.style.width = `${chosenSprite.size}%`;
+        spriteContainer.style.transform = `translateX(-50%) translateY(${100 - chosenSprite.y}%)`;
+        spriteImg.style.opacity = 0;
+        setTimeout(() => {
             spriteImg.src = chosenSprite.url;
             spriteImg.style.opacity = 1;
           }, 300);
@@ -1279,17 +1311,13 @@ ${recentChatHistory}
 
       // 记录故事并显示
       datingGameState.storyHistory.push(`【旁白】: ${gameData.story}`);
-      displayStoryText(gameData.story, gameData.choices);
+      displayStoryText(gameData.story, gameData.choices || ["继续", "换个话题"]);
 
       // 检查是否触发NSFW剧情
       if (datingGameState.lust >= 100 && !datingGameState.isNsfwMode) {
         await triggerNsfwScene();
       }
-    } else {
-      throw new Error("AI返回的数据格式不正确。");
-    }
-  } catch (error) {
-    console.error("约会剧情生成失败:", error);
+    } catch (error) {
     textContentEl.innerHTML = `<p style="color: #ff8a80;">剧情加载失败，AI可能开小差了...<br><small>${error.message}</small></p><button onclick="triggerDatingStory('${userAction.replace(/'/g, "\\'")}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;border:none;background:#ff8a80;color:#fff;cursor:pointer;">点击重试</button>`;
   }
 }
@@ -1427,17 +1455,9 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
       isGemini
         ? data.candidates[0].content.parts[0].text
         : data.choices[0].message.content
-    )
-      .replace(/^```json\s*|```$/gm, "")
-      .trim();
-    const jsonMatchNsfw = rawContent.match(/\{[\s\S]*\}/);
-    if (jsonMatchNsfw) rawContent = jsonMatchNsfw[0];
-    let gameData;
-    try {
-      gameData = JSON.parse(rawContent);
-    } catch (parseErr) {
-      throw new Error(`JSON解析失败 (${parseErr.message})，原始内容: ${rawContent.substring(0, 100)}`);
-    }
+    ).trim();
+
+    const gameData = parseDatingJson(rawContent);
 
     if (gameData.story && Array.isArray(gameData.choices)) {
       // 数值更新逻辑
@@ -1498,9 +1518,7 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
 
       // 记录故事并显示
       datingGameState.storyHistory.push(`【旁白】: ${gameData.story}`);
-      displayStoryText(gameData.story, gameData.choices);
-    } else {
-      throw new Error("AI返回的数据格式不正确。");
+      displayStoryText(gameData.story, gameData.choices || ["继续", "换个话题"]);
     }
   } catch (error) {
     console.error("NSFW剧情生成失败:", error);
