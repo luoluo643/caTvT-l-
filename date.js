@@ -1195,14 +1195,22 @@ ${recentChatHistory}
     if (!response.ok) throw new Error(`API 请求失败: ${await response.text()}`);
 
     const data = await response.json();
-    const rawContent = (
+    let rawContent = (
       isGemini
         ? data.candidates[0].content.parts[0].text
         : data.choices[0].message.content
     )
-      .replace(/^```json\s*|```$/g, "")
+      .replace(/^```json\s*|```$/gm, "")
       .trim();
-    const gameData = JSON.parse(rawContent);
+    // 提取第一个完整的 JSON 对象，兼容 AI 在 JSON 前后附加说明文字的情况
+    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+    if (jsonMatch) rawContent = jsonMatch[0];
+    let gameData;
+    try {
+      gameData = JSON.parse(rawContent);
+    } catch (parseErr) {
+      throw new Error(`JSON解析失败 (${parseErr.message})，原始内容: ${rawContent.substring(0, 100)}`);
+    }
 
     // 处理AI返回的游戏数据
     if (gameData.story && Array.isArray(gameData.choices)) {
@@ -1282,7 +1290,7 @@ ${recentChatHistory}
     }
   } catch (error) {
     console.error("约会剧情生成失败:", error);
-    textContentEl.innerHTML = `<p style="color: #ff8a80;">错误: 剧情加载失败，AI可能开小差了... \n(${error.message})</p>`;
+    textContentEl.innerHTML = `<p style="color: #ff8a80;">剧情加载失败，AI可能开小差了...<br><small>${error.message}</small></p><button onclick="triggerDatingStory('${userAction.replace(/'/g, "\\'")}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;border:none;background:#ff8a80;color:#fff;cursor:pointer;">点击重试</button>`;
   }
 }
 
@@ -1396,34 +1404,40 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
       isGemini,
     );
 
-    const response = await fetch(
-      isGemini ? geminiConfig.url : `${proxyUrl}/v1/chat/completions`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: messagesForApi,
-          temperature: 1.0,
-          response_format: { type: "json_object" },
-        }),
-      },
-    );
+    const response = isGemini
+      ? await fetch(geminiConfig.url, geminiConfig.data)
+      : await fetch(`${proxyUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: messagesForApi,
+            temperature: 1.0,
+            response_format: { type: "json_object" },
+          }),
+        });
 
     if (!response.ok) throw new Error(`API 请求失败: ${await response.text()}`);
 
     const data = await response.json();
-    const rawContent = (
+    let rawContent = (
       isGemini
         ? data.candidates[0].content.parts[0].text
         : data.choices[0].message.content
     )
-      .replace(/^```json\s*|```$/g, "")
+      .replace(/^```json\s*|```$/gm, "")
       .trim();
-    const gameData = JSON.parse(rawContent);
+    const jsonMatchNsfw = rawContent.match(/\{[\s\S]*\}/);
+    if (jsonMatchNsfw) rawContent = jsonMatchNsfw[0];
+    let gameData;
+    try {
+      gameData = JSON.parse(rawContent);
+    } catch (parseErr) {
+      throw new Error(`JSON解析失败 (${parseErr.message})，原始内容: ${rawContent.substring(0, 100)}`);
+    }
 
     if (gameData.story && Array.isArray(gameData.choices)) {
       // 数值更新逻辑
@@ -1490,7 +1504,8 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
     }
   } catch (error) {
     console.error("NSFW剧情生成失败:", error);
-    textContentEl.innerHTML = `<p style="color: #ff8a80;">错误: NSFW剧情加载失败... \n(${error.message})</p>`;
+    const safeAction = userAction.replace(/'/g, "\\'");
+    textContentEl.innerHTML = `<p style="color: #ff8a80;">剧情加载失败...<br><small>${error.message}</small></p><button onclick="triggerNsfwScene('${safeAction}')" style="margin-top:10px;padding:8px 18px;border-radius:20px;border:none;background:#ff8a80;color:#fff;cursor:pointer;">点击重试</button>`;
   }
 }
 
