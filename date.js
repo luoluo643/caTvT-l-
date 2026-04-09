@@ -10,16 +10,19 @@ const bgmPlayer = document.getElementById("dating-bgm-player");
  * 从 AI 原始回复中健壮地提取 JSON 对象。
  * 策略：逐步降级，尽量不抛错。
  *   1. 直接 JSON.parse
- *   2. 去掉 markdown 代码块后再 parse
+ *   2. 去掉思维链 / markdown 代码块后再 parse
  *   3. 用正则找最长 {...} 块逐个尝试 parse（从最外层往内缩）
  *   4. 以上都失败时，把原始文字当作 story 兜底，返回最小合法对象
  */
 function parseDatingJson(raw) {
+  // 先去掉思维链标签 <think>...</think>（含多行）
+  const noThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
   // 策略1：直接解析
-  try { return JSON.parse(raw); } catch (_) {}
+  try { return JSON.parse(noThink); } catch (_) {}
 
   // 策略2：去掉 markdown 代码块标记
-  const stripped = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  const stripped = noThink.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
   try { return JSON.parse(stripped); } catch (_) {}
 
   // 策略3：找所有 {...} 候选块，从最长的开始尝试
@@ -38,14 +41,32 @@ function parseDatingJson(raw) {
     try { return JSON.parse(chunk); } catch (_) {}
   }
 
-  // 策略4：完全兜底，把原文当 story 用，让游戏继续
+  // 策略4：完全兜底，把去掉思维链后的文字当 story 用
   console.warn("[parseDatingJson] 所有解析策略失败，使用兜底对象。原始内容:", raw.substring(0, 200));
   return {
-    story: stripped || raw,
+    story: stripped || noThink || raw,
     choices: ["继续", "换个话题"],
     valuesUpdate: { romance: 2, lust: 0, completion_increase: 3 },
     isDateOver: false,
   };
+}
+
+/**
+ * 清洗 AI 返回的 story 文本，去掉残留的思维链、JSON代码块、英文技术标记等
+ */
+function cleanStoryText(text) {
+  if (!text) return text;
+  return text
+    // 去掉 <think>...</think> 思维链
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    // 去掉 markdown JSON 代码块
+    .replace(/```json[\s\S]*?```/gi, "")
+    .replace(/```[\s\S]*?```/g, "")
+    // 去掉行首的 JSON 键值对残留（如 "story": "..."）
+    .replace(/^\s*"?\w+"?\s*:\s*/gm, "")
+    // 去掉多余空行
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 /**
  * 打开"约会大作战"App，快速显示已保存数据
@@ -1278,7 +1299,7 @@ ${recentChatHistory}
     // 检查约会是否结束且完成度达到100%
     if (isDateOver && datingGameState.completion >= 100) {
       // 显示结算卡片
-      showDatingSummaryCard(gameData.story);
+      showDatingSummaryCard(cleanStoryText(gameData.story));
       return;
     }
 
@@ -1310,8 +1331,9 @@ ${recentChatHistory}
       }
 
       // 记录故事并显示
-      datingGameState.storyHistory.push(`【旁白】: ${gameData.story}`);
-      displayStoryText(gameData.story, gameData.choices || ["继续", "换个话题"]);
+      const cleanedStory = cleanStoryText(gameData.story);
+      datingGameState.storyHistory.push(`【旁白】: ${cleanedStory}`);
+      displayStoryText(cleanedStory, gameData.choices || ["继续", "换个话题"]);
 
       // 检查是否触发NSFW剧情
       if (datingGameState.lust >= 100 && !datingGameState.isNsfwMode) {
@@ -1485,7 +1507,7 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
       // 根据 AI 的 `isDateOver` 标志决定是否结束
       const isDateOver = gameData.isDateOver || false;
       if (isDateOver) {
-        showDatingSummaryCard(gameData.story);
+        showDatingSummaryCard(cleanStoryText(gameData.story));
         return;
       }
 
@@ -1517,8 +1539,9 @@ async function triggerNsfwScene(userAction = "故事自然发展") {
       }
 
       // 记录故事并显示
-      datingGameState.storyHistory.push(`【旁白】: ${gameData.story}`);
-      displayStoryText(gameData.story, gameData.choices || ["继续", "换个话题"]);
+      const cleanedStoryNsfw = cleanStoryText(gameData.story);
+      datingGameState.storyHistory.push(`【旁白】: ${cleanedStoryNsfw}`);
+      displayStoryText(cleanedStoryNsfw, gameData.choices || ["继续", "换个话题"]);
     }
   } catch (error) {
     console.error("NSFW剧情生成失败:", error);
